@@ -1,6 +1,12 @@
 "use client";
 
-import { Site, calcProgress, colorForSite, shortDate } from "@/lib/types";
+import {
+  Site,
+  calcProgress,
+  colorForSite,
+  shortDate,
+  getPeriods,
+} from "@/lib/types";
 
 export default function SiteList({
   sites,
@@ -28,6 +34,7 @@ export default function SiteList({
       {sorted.map((s) => {
         const progress = calcProgress(s);
         const color = colorForSite(s.id);
+        const periods = getPeriods(s);
         return (
           <div
             key={s.id}
@@ -45,11 +52,12 @@ export default function SiteList({
             <div className="mt-1 text-base text-gray-700">
               {s.manager && <span className="mr-3">担当：{s.manager}</span>}
               <span>
-                {shortDate(s.start_date)} 〜 {shortDate(s.end_date)}
+                {periods
+                  .map((p) => `${shortDate(p.start)}〜${shortDate(p.end)}`)
+                  .join("、")}
               </span>
             </div>
 
-            {/* 進捗バー */}
             <div className="mt-2 h-3 bg-gray-200 rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Site, SiteInput } from "@/lib/types";
+import { Site, SiteInput, Period, getPeriods } from "@/lib/types";
 
 const label = "block text-base font-bold mb-1 text-genba-ink";
 const field =
@@ -20,12 +20,26 @@ export default function SiteEditModal({
 }) {
   const [name, setName] = useState(site.name);
   const [manager, setManager] = useState(site.manager);
-  const [startDate, setStartDate] = useState(site.start_date);
-  const [endDate, setEndDate] = useState(site.end_date);
   const [memo, setMemo] = useState(site.memo);
+  const [periods, setPeriods] = useState<Period[]>(getPeriods(site));
+  const [workSat, setWorkSat] = useState(site.work_sat ?? false);
+  const [workSun, setWorkSun] = useState(site.work_sun ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const updatePeriod = (i: number, key: "start" | "end", val: string) => {
+    setPeriods((prev) =>
+      prev.map((p, idx) => (idx === i ? { ...p, [key]: val } : p))
+    );
+  };
+  const addPeriod = () => {
+    const last = periods[periods.length - 1];
+    setPeriods((prev) => [...prev, { start: last.end, end: last.end }]);
+  };
+  const removePeriod = (i: number) => {
+    setPeriods((prev) => prev.filter((_, idx) => idx !== i));
+  };
 
   const handleSave = async () => {
     setError("");
@@ -33,18 +47,21 @@ export default function SiteEditModal({
       setError("現場名を入力してください");
       return;
     }
-    if (endDate < startDate) {
-      setError("終了日は開始日より後にしてください");
-      return;
+    for (const p of periods) {
+      if (p.end < p.start) {
+        setError("終了日は開始日より後にしてください");
+        return;
+      }
     }
     setBusy(true);
     try {
       await onSave(site.id, {
         name: name.trim(),
         manager: manager.trim(),
-        start_date: startDate,
-        end_date: endDate,
         memo: memo.trim(),
+        periods,
+        work_sat: workSat,
+        work_sun: workSun,
       });
       onClose();
     } catch {
@@ -101,26 +118,90 @@ export default function SiteEditModal({
               onChange={(e) => setManager(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={label}>開始日</label>
-              <input
-                type="date"
-                className={field}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
+
+          <div>
+            <label className={label}>工期（飛び飛びの場合は追加）</label>
+            <div className="space-y-3">
+              {periods.map((p, i) => (
+                <div
+                  key={i}
+                  className="border-2 border-gray-200 rounded-lg p-3 bg-gray-50"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-genba-accent">
+                      工期 {i + 1}
+                    </span>
+                    {periods.length > 1 && (
+                      <button
+                        onClick={() => removePeriod(i)}
+                        className="text-red-600 font-bold text-sm px-2 py-1 active:bg-red-50 rounded"
+                      >
+                        削除
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-sm text-gray-600">開始日</span>
+                      <input
+                        type="date"
+                        className={field}
+                        value={p.start}
+                        onChange={(e) =>
+                          updatePeriod(i, "start", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div>
+                      <span className="text-sm text-gray-600">終了日</span>
+                      <input
+                        type="date"
+                        className={field}
+                        value={p.end}
+                        onChange={(e) => updatePeriod(i, "end", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div>
-              <label className={label}>終了日</label>
-              <input
-                type="date"
-                className={field}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
+            <button
+              onClick={addPeriod}
+              className="mt-2 w-full py-3 text-base font-bold text-genba-accent border-2 border-genba-accent border-dashed rounded-lg active:bg-blue-50"
+            >
+              ＋ 工期を追加
+            </button>
+          </div>
+
+          {/* 土日の作業設定 */}
+          <div>
+            <label className={label}>作業する曜日</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setWorkSat((v) => !v)}
+                className={`py-3 text-lg font-bold rounded-lg border-2 ${
+                  workSat
+                    ? "bg-genba-accent text-white border-genba-accent"
+                    : "bg-white text-gray-500 border-gray-300"
+                }`}
+              >
+                土曜も作業 {workSat ? "ON" : "OFF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkSun((v) => !v)}
+                className={`py-3 text-lg font-bold rounded-lg border-2 ${
+                  workSun
+                    ? "bg-genba-accent text-white border-genba-accent"
+                    : "bg-white text-gray-500 border-gray-300"
+                }`}
+              >
+                日曜も作業 {workSun ? "ON" : "OFF"}
+              </button>
             </div>
           </div>
+
           <div>
             <label className={label}>メモ</label>
             <textarea
@@ -143,7 +224,6 @@ export default function SiteEditModal({
             {busy ? "処理中…" : "保存する"}
           </button>
 
-          {/* 削除 */}
           {!confirmDelete ? (
             <button
               onClick={() => setConfirmDelete(true)}

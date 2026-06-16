@@ -1,10 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Site, parseDate, colorForSite, today, shortDate } from "@/lib/types";
+import {
+  Site,
+  parseDate,
+  colorForSite,
+  today,
+  shortDate,
+  getPeriods,
+  siteRange,
+  isWorkday,
+} from "@/lib/types";
 
-const DAY_W = 34;   // 1日あたりの幅(px)
-const NAME_W = 116; // 現場名列の幅(px)
+const MIN_DAY_W = 20; // 1日の最小幅(px)。広い画面では自動で広がり1ヶ月が1画面に収まる
+const NAME_W = 100;   // 現場名列の幅(px)
 
 export default function GanttChart({
   sites,
@@ -27,15 +36,22 @@ export default function GanttChart({
   const monthStart = new Date(ym.y, ym.m, 1).getTime();
   const monthEnd = new Date(ym.y, ym.m, daysInMonth).getTime();
 
+  // この月に1つでも工期がかかる現場
   const visible = useMemo(
     () =>
       sites
-        .filter((s) => {
-          const st = parseDate(s.start_date).getTime();
-          const en = parseDate(s.end_date).getTime();
-          return st <= monthEnd && en >= monthStart;
-        })
-        .sort((a, b) => a.start_date.localeCompare(b.start_date)),
+        .filter((s) =>
+          getPeriods(s).some((p) => {
+            const st = parseDate(p.start).getTime();
+            const en = parseDate(p.end).getTime();
+            return st <= monthEnd && en >= monthStart;
+          })
+        )
+        .sort((a, b) => {
+          const ra = siteRange(getPeriods(a)).start;
+          const rb = siteRange(getPeriods(b)).start;
+          return ra.localeCompare(rb);
+        }),
     [sites, monthStart, monthEnd]
   );
 
@@ -56,6 +72,27 @@ export default function GanttChart({
   const goThisMonth = () => {
     const n = today();
     setYm({ y: n.getFullYear(), m: n.getMonth() });
+  };
+
+  // ある日が作業日か（工期内 かつ 土日設定を満たす）
+  const isActiveDay = (s: Site, day: number) => {
+    if (day < 1 || day > daysInMonth) return false;
+    const dow = new Date(ym.y, ym.m, day).getDay();
+    if (!isWorkday(s, dow)) return false;
+    const cur = new Date(ym.y, ym.m, day).getTime();
+    return getPeriods(s).some((p) => {
+      const st = parseDate(p.start).getTime();
+      const en = parseDate(p.end).getTime();
+      return cur >= st && cur <= en;
+    });
+  };
+
+  // ある日付のバー表示情報（端は角丸）
+  const dayInfo = (s: Site, day: number) => {
+    const active = isActiveDay(s, day);
+    const isStart = active && !isActiveDay(s, day - 1);
+    const isEnd = active && !isActiveDay(s, day + 1);
+    return { active, isStart, isEnd };
   };
 
   return (
@@ -90,12 +127,12 @@ export default function GanttChart({
         </div>
       ) : (
         <div className="scroll-x border border-genba-line rounded-lg">
-          <div style={{ minWidth: NAME_W + daysInMonth * DAY_W }}>
+          <div style={{ minWidth: "100%" }}>
             {/* 日付ヘッダー */}
             <div className="flex bg-genba-grid border-b border-genba-line">
               <div
-                className="sticky left-0 z-20 bg-genba-grid border-r border-genba-line flex items-center justify-center text-sm font-bold"
-                style={{ width: NAME_W, minWidth: NAME_W }}
+                className="sticky left-0 z-20 bg-genba-grid border-r border-genba-line flex items-center justify-center text-xs font-bold"
+                style={{ flex: `0 0 ${NAME_W}px` }}
               >
                 現場名
               </div>
@@ -107,14 +144,13 @@ export default function GanttChart({
                     key={d}
                     className="flex flex-col items-center justify-center py-1 border-r border-genba-grid"
                     style={{
-                      width: DAY_W,
-                      minWidth: DAY_W,
+                      flex: `1 0 ${MIN_DAY_W}px`,
                       background: isToday ? "#fff3e0" : undefined,
                       borderLeft: isToday ? "2px solid #ff5722" : undefined,
                     }}
                   >
                     <span
-                      className="text-sm font-bold leading-none"
+                      className="text-xs font-bold leading-none"
                       style={{
                         color:
                           dow === 0 ? "#c62828" : dow === 6 ? "#1565c0" : "#1a1a1a",
@@ -123,10 +159,10 @@ export default function GanttChart({
                       {d}
                     </span>
                     <span
-                      className="text-[10px] leading-none mt-0.5"
+                      className="text-[9px] leading-none mt-0.5"
                       style={{
                         color:
-                          dow === 0 ? "#c62828" : dow === 6 ? "#1565c0" : "#888",
+                          dow === 0 ? "#c62828" : dow === 6 ? "#1565c0" : "#999",
                       }}
                     >
                       {"日月火水木金土"[dow]}
@@ -138,8 +174,6 @@ export default function GanttChart({
 
             {/* 現場ごとの行 */}
             {visible.map((s) => {
-              const st = parseDate(s.start_date).getTime();
-              const en = parseDate(s.end_date).getTime();
               const color = colorForSite(s.id);
               return (
                 <div
@@ -148,42 +182,37 @@ export default function GanttChart({
                   onClick={() => onSelect(s)}
                 >
                   <div
-                    className="sticky left-0 z-10 bg-white border-r border-genba-line flex items-center px-2 text-sm font-bold"
-                    style={{ width: NAME_W, minWidth: NAME_W, height: 44 }}
+                    className="sticky left-0 z-10 bg-white border-r border-genba-line flex items-center px-1.5 text-xs font-bold"
+                    style={{ flex: `0 0 ${NAME_W}px`, height: 44 }}
                   >
                     <span className="line-clamp-2 leading-tight">{s.name}</span>
                   </div>
                   {days.map((d) => {
-                    const cur = new Date(ym.y, ym.m, d).getTime();
-                    const active = cur >= st && cur <= en;
-                    const isStart = active && (cur === st || d === 1);
-                    const isEnd =
-                      active && (cur === en || d === daysInMonth);
+                    const info = dayInfo(s, d);
                     const isToday = d === todayDay;
                     return (
                       <div
                         key={d}
                         className="border-r border-genba-grid flex items-center"
                         style={{
-                          width: DAY_W,
-                          minWidth: DAY_W,
+                          flex: `1 0 ${MIN_DAY_W}px`,
                           height: 44,
                           background: isToday ? "#fff8f3" : undefined,
                           borderLeft: isToday ? "2px solid #ff5722" : undefined,
                         }}
                       >
-                        {active && (
+                        {info.active && (
                           <div
                             style={{
                               background: color,
                               height: 22,
                               width: "100%",
-                              marginLeft: isStart ? 3 : 0,
-                              marginRight: isEnd ? 3 : 0,
-                              borderTopLeftRadius: isStart ? 6 : 0,
-                              borderBottomLeftRadius: isStart ? 6 : 0,
-                              borderTopRightRadius: isEnd ? 6 : 0,
-                              borderBottomRightRadius: isEnd ? 6 : 0,
+                              marginLeft: info.isStart ? 2 : 0,
+                              marginRight: info.isEnd ? 2 : 0,
+                              borderTopLeftRadius: info.isStart ? 5 : 0,
+                              borderBottomLeftRadius: info.isStart ? 5 : 0,
+                              borderTopRightRadius: info.isEnd ? 5 : 0,
+                              borderBottomRightRadius: info.isEnd ? 5 : 0,
                             }}
                           />
                         )}
@@ -200,26 +229,27 @@ export default function GanttChart({
       {/* 凡例 */}
       {visible.length > 0 && (
         <div className="mt-3 space-y-1">
-          {visible.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-center gap-2 text-sm cursor-pointer active:bg-gray-50 px-1 py-0.5 rounded"
-              onClick={() => onSelect(s)}
-            >
-              <span
-                className="inline-block rounded"
-                style={{
-                  width: 14,
-                  height: 14,
-                  background: colorForSite(s.id),
-                }}
-              />
-              <span className="font-bold">{s.name}</span>
-              <span className="text-gray-500">
-                {shortDate(s.start_date)}〜{shortDate(s.end_date)}
-              </span>
-            </div>
-          ))}
+          {visible.map((s) => {
+            const periods = getPeriods(s);
+            return (
+              <div
+                key={s.id}
+                className="flex items-center gap-2 text-sm cursor-pointer active:bg-gray-50 px-1 py-0.5 rounded"
+                onClick={() => onSelect(s)}
+              >
+                <span
+                  className="inline-block rounded shrink-0"
+                  style={{ width: 14, height: 14, background: colorForSite(s.id) }}
+                />
+                <span className="font-bold">{s.name}</span>
+                <span className="text-gray-500">
+                  {periods
+                    .map((p) => `${shortDate(p.start)}〜${shortDate(p.end)}`)
+                    .join("、")}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
