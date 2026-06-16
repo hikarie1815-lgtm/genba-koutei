@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: #1a1a1a;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* タップ時の青いハイライトを消す（現場でのタップ感を良く） */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 入力欄を大きく・読みやすく（現場で手袋でも押しやすい） */
+input,
+textarea,
+button,
+select {
+  font-size: 16px; /* iOSで入力時に拡大されないように */
+}
+
+/* 横スクロールバーを細く */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.scroll-x::-webkit-scrollbar {
+  height: 8px;
+}
+.scroll-x::-webkit-scrollbar-thumb {
+  background: #bbb;
+  border-radius: 4px;
+}
